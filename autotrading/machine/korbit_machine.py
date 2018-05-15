@@ -27,6 +27,17 @@ class KorbitMachine(Machine):
         self.refresh_token = None
         self.token_type = None
 
+    def get_username(self):
+        return self.USER_NAME
+
+    def get_nonce(self):
+        """Private API 호출 시 사용할 nonce값을 구하는 메소드입니다.
+
+        Returns:
+            nonce값을 반환합니다.
+        """
+        return str(int(time.time()))
+
     def get_token(self):
         """액세스토큰 정보를 받기 위한 메소드입니다.
         Returns:
@@ -105,3 +116,181 @@ class KorbitMachine(Machine):
         result["low"] = response_json["low"]
         result["volume"] = response_json["volume"]
         return result
+
+    def get_filled_orders(self, currency_type=None, per="minute"):
+        """체결정보를 얻어오기 위한 메소드입니다.
+
+        Args:
+            currency_type(str):화폐 종류를 입력받습니다. 화폐의 종류는 TRADE_CURRENCY_TYPE에 정의되어있습니다.
+            per(str): minute, hour, day로 체결정보를 받아올 시간을 지정합니다.
+
+        Returns:
+           가장 최근 체결정보를 딕셔너리의 리스트 형태로 반환합니다.
+        """
+        if currency_type is None:
+            raise Exception("Need to currency_type")
+        time.sleep(1)
+        params = {'currency_pair':currency_type,'time':per}
+        orders_api_path = "/v1/transactions"
+        url_path = self.BASE_API_URL + orders_api_path
+        res = requests.get(url_path, params=params)
+        result = res.json()
+        return result
+
+    def get_constants(self):
+        time.sleep(1)
+        constants_api_path = "/v1/constants"
+        url_path = self.BASE_API_URL + constants_api_path
+        res = requests.get(url_path)
+        result = res.json()
+        self.constants = result
+        return result
+
+    def get_wallet_status(self):
+        """사용자의 지갑정보를 조회하는 메소드입니다.
+
+        Returns:
+            사용자의 지갑에 화폐별 잔고를 딕셔너리 형태로 반환합니다.
+        """
+        time.sleep(1)
+        wallet_status_api_path ="/v1/user/balances"
+        url_path = self.BASE_API_URL + wallet_status_api_path
+        headers = {"Authorization":"Bearer " + self.access_token}
+        res = requests.get(url_path, headers=headers)
+        result = res.json()
+        wallet_status = { currency:dict(avail=result[currency]["available"]) for currency in self.TRADE_CURRENCY_TYPE }
+        for item in self.TRADE_CURRENCY_TYPE:
+            wallet_status[item]["balance"] = str(float(result[item]["trade_in_use"]) + float(result[item]["withdrawal_in_use"]))
+        return wallet_status
+
+    def get_list_my_orders(self, currency_type=None):
+        """사용자의 지갑정보를 조회하는 메소드입니다.
+
+        Args:
+            currency_type(str):화폐 종류를 입력받습니다. 화폐의 종류는 TRADE_CURRENCY_TYPE에 정의되어있습니다.
+
+        Returns:
+            사용자의 지갑에 화폐별 잔고를 딕셔너리 형태로 반환합니다.
+        """
+        if currency_type is None:
+            raise Exception("Need to currency_type")
+        time.sleep(1)
+        params = {'currency_pair':currency_type}
+        list_order_api_path = "/v1/user/orders/open"
+        url_path = self.BASE_API_URL + list_order_api_path
+        headers = {"Authorization":"Bearer " + self.access_token}
+        res = requests.get(url_path, headers=headers, params=params)
+        result = res.json()
+        return result
+
+    def get_my_order_status(self, currency_type=None, order_id=None):
+        """사용자의 주문정보 상세정보를 조회하는 메소드입니다.
+
+        Args:
+            currency_type(str):화폐 종류를 입력받습니다. 화폐의 종류는 TRADE_CURRENCY_TYPE에 정의되어있습니다.
+            order_id(str): 거래ID
+
+        Returns:
+            order_id에 해당하는 주문의 상세정보를 반환합니다.
+        """
+        if currency_type is None or order_id is None:
+            raise Exception("Need to currency_pair and order id")
+        time.sleep(1)
+        list_transaction_api_path = "/v1/user/orders"
+        url_path = self.BASE_API_URL + list_transaction_api_path
+        headers = {"Authorization":"Bearer " + self.access_token}
+        params = {"currency_pair" : currency_type, "id": order_id}
+        res = requests.get(url_path, headers=headers, params=params)
+        result = res.json()
+        return result
+
+    def buy_order(self, currency_type=None, price=None, qty=None, order_type="limit"):
+        """매수 주문을 실행하는 메소드입니다.
+
+        Note:
+            화폐 종류마다 최소 주문 수량은 다를 수 있습니다.
+            이 메소드는 지정가 거래만 지원합니다.
+
+        Args:
+            currency_type(str):화폐 종류를 입력받습니다. 화폐의 종류는 TRADE_CURRENCY_TYPE에 정의되어있습니다.
+            price(str): 1개 수량 주문에 해당하는 원화(krw) 값
+            qty(str): 주문 수량입니다.
+
+        Returns:
+            주문의 상태에 대해 반환합니다.
+        """
+        time.sleep(1)
+        if currency_type is None or price is None or qty is None:
+            raise Exception("Need to param")
+        buy_order_api_path = "/v1/user/orders/buy"
+        url_path = self.BASE_API_URL + buy_order_api_path
+        headers = {"Authorization":"Bearer " + self.access_token}
+        data = {"currency_pair":currency_type,
+                "type":order_type,
+                "price":price,
+                "coin_amount":qty,
+                "nonce":self.get_nonce()}
+        res = requests.post(url_path, headers=headers, data=data)
+        result = res.json()
+        return result
+
+    def sell_order(self, currency_type=None, price=None, qty=None, order_type="limit"):
+        """매도 주문을 실행하는 메소드입니다.
+
+        Note:
+            화폐 종류마다 최소 주문 수량은 다를 수 있습니다.
+            이 메소드는 지정가 거래만 지원합니다.
+
+        Args:
+            currency_type(str):화폐 종류를 입력받습니다. 화폐의 종류는 TRADE_CURRENCY_TYPE에 정의되어있습니다.
+            price(str): 1개 수량 주문에 해당하는 원화(krw) 값
+            qty(str): 주문 수량입니다.
+
+        Returns:
+            주문의 상태에 대해 반환합니다.
+        """
+        time.sleep(1)
+        if price is None or qty is None or currency_type is None:
+            raise Exception("Need to params")
+        if order_type != "limit":
+            raise Exception("Check order type")
+        sell_order_api_path = "/v1/user/orders/sell"
+        url_path = self.BASE_API_URL + sell_order_api_path
+        headers = {"Authorization":"Bearer " + self.access_token}
+        data = {"currency_pair":currency_type,
+                "type":order_type,
+                "price":price,
+                "coin_amount":qty,
+                "nonce":self.get_nonce()}
+        res = requests.post(url_path, headers=headers, data=data)
+        result = res.json()
+        return result
+
+    def cancel_order(self, currency_type=None, order_id=None):
+        """취소 주문을 실행하는 메소드입니다.
+
+        Args:
+            currency_type(str):화폐 종류를 입력받습니다. 화폐의 종류는 TRADE_CURRENCY_TYPE에 정의되어있습니다.
+            order_id(str): 취소 주문하려는 주문의 ID
+
+        Returns:
+            주문의 상태에 대해 반환합니다.
+        """
+        time.sleep(1)
+        if currency_type is None or order_id is None:
+            raise Exception("Need to params")
+        cancel_order_api_path = "/v1/user/orders/cancel"
+        url_path = self.BASE_API_URL + cancel_order_api_path
+        headers = {"Authorization":"Bearer " + self.access_token}
+        data = {"currency_pair":currency_type,
+                "id":order_id,
+                "nonce":self.get_nonce()}
+        res = requests.post(url_path, headers=headers, data=data)
+        result = res.json()
+        return result
+
+    def __repr__(self):
+        return "(Korbit %s)"%self.USER_NAME
+
+    def __str__(self):
+        return str("Korbit")
