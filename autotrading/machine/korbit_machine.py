@@ -74,3 +74,34 @@ class KorbitMachine(Machine):
         self.refresh_token = result["refresh_token"]
         self.expire = result["expires_in"]
         return self.expire, self.access_token, self.refresh_token
+
+    def get_ticker(self, currency_type=None):
+        """마지막 체결정보(Tick)을 얻기 위한 메소드입니다.
+
+        Args:
+            currency_type(str):화폐 종류를 입력받습니다. 화폐의 종류는 TRADE_CURRENCY_TYPE에 정의되어있습니다.
+
+        Returns:
+            결과를 딕셔너리로 반환합니다.
+            결과의 필드는 timestamp, last, bid, ask, high, low, volume이 있습니다.
+
+        Raise:
+            currency_type이 없으면 Exception을 발생시킵니다.
+        """
+        if currency_type is None:
+            raise Exception('Need to currency type')
+        time.sleep(1)
+        params = {'currency_pair':currency_type}
+        ticker_api_path = "/v1/ticker/detailed"
+        url_path = self.BASE_API_URL + ticker_api_path
+        res = requests.get(url_path, params=params)
+        response_json = res.json()
+        result={}
+        result["timestamp"] = str(response_json["timestamp"])
+        result["last"] = response_json["last"]
+        result["bid"] = response_json["bid"]
+        result["ask"] = response_json["ask"]
+        result["high"] = response_json["high"]
+        result["low"] = response_json["low"]
+        result["volume"] = response_json["volume"]
+        return result
