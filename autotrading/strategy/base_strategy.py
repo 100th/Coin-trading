@@ -82,4 +82,37 @@ class Strategy(ABC):
             return None
 
     def order_cancel_transaction(self, machine=None, db_handler=None, currency_type=None, item=None):
-        pass
+        """취소 주문과 함께 DB에 필요한 데이터를 업데이트 작업을 위한 메소드
+        Args:
+            machine(obj): 취소 주문하려는 거래소 모듈 객체
+            db_handler(obj): 취소 주문정보를 하려는 DB 모듈 객체
+            currency_type(str): 취소 주문하려는 화폐 종류
+            item(dict): 취소 주문에 필요한 데이터
+            order_type(str): 매수 방법
+
+        Returns:
+            OrderId(str):매수 완료 후 주문 id
+        """
+        db_handler.set_db_collection("trader","trade_status")
+        if currency_type is None or item is None:
+            raise Exception("Need to param")
+        if item["status"] == "BUY_ORDERED":
+            result = machine.cancel_order(currency_type=currency_type, order_id=item["buy_order_id"])
+            if result[0]["status"] == "success":
+                db_handler.update_items({"_id":item["_id"]}, {"$set":{"status":"CANCEL_ORDERED", "cancel_order_time":int(datetime.datetime.now().timestamp()),
+                                "error":"success"}})
+                return item["buy_order_id"]
+            else:
+                logger.info(result)
+                logger.info(item)
+                return None
+        elif item["status"] == "SELL_ORDERED":
+            result = machine.cancel_order(currency_type=currency_type, order_id=item["sell_order_id"])
+            if result[0]["status"] == "success":
+                db_handler.update_items({"_id":item["_id"]}, {"$set":{"status":"CANCEL_ORDERED", "cancel_order_time":int(datetime.datetime.now().timestamp()),
+                                "error":"success"}})
+                return item["sell_order_id"]
+            else:
+                logger.info(result)
+                logger.info(item)
+                return None
