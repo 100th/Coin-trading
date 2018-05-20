@@ -108,6 +108,39 @@ class StepTrade(Strategy):
                                         item_id={"_id":item["_id"]},
                                         value={"error":"failed"})
 
+    def check_sell_ordered(self):
+        sell_orders = self.db_handler.find_items({"currency":self.currency_type,"status":"SELL_ORDERED"}, "trader", "trade_status")
+        for item in sell_orders:
+            logger.info(item)
+            if "sell_order_id" in item:
+                order_result = self.machine.get_my_order_status(self.currency_type, item["sell_order_id"])
+                if order_result is not None:
+                    logger.info(order_result)
+                else:
+                    continue
+            if len(order_result) > 0 and order_result[0]["status"]=="filled" and order_result[0]["price"] == str(item["desired_value"]):
+                order_result_dict = order_result[0]
+                real_sell_amount = float(order_result_dict["filled_amount"])
+                real_sell_value = float(order_result_dict["avg_price"])
+                completed_time = int(order_result_dict["last_filled_at"]/1000)
+                fee = float(order_result_dict["fee"])
+                if order_result_dict["side"] == "ask":
+                    self.update_trade_status(db_handler=self.db_handler,
+                                             item_id={"_id":item["_id"]},
+                                             value={"status":"SELL_COMPLETED",
+                                             "real_sell_amount":real_sell_amount,
+                                             "sell_completed_time":completed_time,
+                                             "real_sell_value":real_sell_value,
+                                             "sell_fee":fee})
+                    self.pusher.send_message("#push", "sell_completed:"+str(item))
+            elif len(order_result) > 0 and order_result[0]["status"] =="unfilled" and order_result[0]["price"] == str(item["desired_value"]):
+                if int(item["desired_value"]) > self.last_val*1.15:
+                    self.order_cancel_transaction(machine=self.machine, db_handler=self.db_handler, currency_type=self.currency_type, item=item)
+                    self.update_trade_status(db_handler=self.db_handler,
+                                             item_id={"_id":item["_id"]},
+                                             value={"status":"KEEP_ORDERED"})
+                    self.pusher.send_message("#push", "keeped:"+str(item))
+
 
     def check_my_order(self):
         self.check_buy_ordered()
