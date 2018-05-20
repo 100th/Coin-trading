@@ -141,6 +141,13 @@ class StepTrade(Strategy):
                                              value={"status":"KEEP_ORDERED"})
                     self.pusher.send_message("#push", "keeped:"+str(item))
 
+    def check_sell_completed(self):
+        sell_completed = self.db_handler.find_items({"currency":self.currency_type, "$or":[{"status":"SELL_COMPLETED"},{"status":"CANCEL_ORDERED"}]}, "trader", "trade_status")
+        for item in sell_completed:
+            self.db_handler.insert_item(item, "trader", "trade_history")
+            self.db_handler.delete_items({"_id":item["_id"]}, "trader", "trade_status")
+
+
 
     def check_my_order(self):
         self.check_buy_ordered()
