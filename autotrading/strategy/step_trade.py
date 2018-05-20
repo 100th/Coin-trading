@@ -93,6 +93,22 @@ class StepTrade(Strategy):
                                             item_id={"_id":item["_id"]},
                                             value={"status":"CANCEL_ORDERED"})
 
+    def check_buy_completed(self):
+        buy_completed = self.db_handler.find_items({"currency":self.currency_type, "status":"BUY_COMPLETED"}, "trader", "trade_status")
+        logger.info("BUY_COMPLETED")
+        for item in buy_completed:
+            logger.info(item)
+            try:
+                self.order_sell_transaction(machine=self.machine, db_handler=self.db_handler, currency_type=self.currency_type, item=item)
+                self.pusher.send_message("#push", "sell_ordered:"+str(item))
+            except:
+                error = traceback.format_exc()
+                logger.info(error)
+                self.update_trade_status(db_handler=self.db_handler,
+                                        item_id={"_id":item["_id"]},
+                                        value={"error":"failed"})
+
+
     def check_my_order(self):
         self.check_buy_ordered()
         self.check_buy_completed()
