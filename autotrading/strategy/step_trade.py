@@ -147,7 +147,13 @@ class StepTrade(Strategy):
             self.db_handler.insert_item(item, "trader", "trade_history")
             self.db_handler.delete_items({"_id":item["_id"]}, "trader", "trade_status")
 
-
+    def check_keep_ordered(self):
+        keeped_orders = self.db_handler.find_items({"currency":self.currency_type, "status":"KEEP_ORDERED"}, "trader", "trade_status")
+        for item in keeped_orders:
+            if int(item["desired_value"])*0.9 < self.last_val:
+                self.order_sell_transaction(machine=self.machine, db_handler=self.db_handler, currency_type=self.currency_type, item=item)
+                self.pusher.send_message("#push", "keep_sell_ordered:"+str(item))
+                logger.info("sell order from keeped"+str(item["_id"]))
 
     def check_my_order(self):
         self.check_buy_ordered()
