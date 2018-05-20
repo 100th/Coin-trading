@@ -52,6 +52,57 @@ class StepTrade(Strategy):
         self.last_val=int(last["last"])
         self.last_24h_volume = float(last["volume"])
 
+    def scenario(self):
+        now = datetime.datetime.now()
+        five_min_ago = now - datetime.timedelta(minutes=5)
+        five_min_ago_timestamp = int(five_min_ago.timestamp())
+        pipeline_5m = [{"$match":{"timestamp":{"$gt":five_min_ago_timestamp}, "coin":self.currency_type}},
+                           {"$group":{"_id":"$coin",
+                                      "min_val":{"$min":"$price"},
+                                      "max_val":{"$max":"$price"},
+                                      "sum_val":{"$sum":"$amount"}
+                    }}]
+
+        """
+        MongoDB에 화폐 데이터를 쌓고 있어야 아래 로직 사용 가능합니다.
+        five_min_result = self.db_handler.aggregate(pipeline_5m)
+        for item in five_min_result:
+            five_max_val = int(item["max_val"])
+            five_min_val = int(item["min_val"])
+            five_sum_avg_val = int(item["sum_val"])/5
+
+        if float(five_min_val) > float(self.last_val) and float(five_sum_avg_val) > float(self.last_24h_volume)/1440:
+            self.pusher.send_message("#push", "down stream 5min min_val={0}, last_val{1}".format(str(five_min_val),str(self.last_val)))
+            return
+        if float(five_max_val) < float(self.last_val) and float(five_sum_avg_val) > float(self.last_24h_volume)/1440:
+            self.pusher.send_message("#push", "up stream 5min min_val={0}, last_val{1}".format(str(five_min_val),str(self.last_val)))
+        """
+
+        logger.info("buy_price:"+str(self.last_val))
+        my_orders = self.db_handler.find_items({"currency":self.currency_type, "$or":[{"status":"BUY_ORDERED"},{"status":"SELL_ORDERED"},{"status":"BUY_COMPLETED"}],
+                                                                    "buy":{"$gte": self.last_val-int(self.params["step_value"]),
+                                                                            "$lte": self.last_val+int(self.params["step_value"])}},"trader","trade_status")
+        if my_orders.count() > 0:
+            logger.info("Exists order in same price")
+            for order in my_orders:
+                logger.info("order:"+str(order))
+        else:
+            logger.info("Buy Order")
+            self.item={"buy":str(self.last_val), "buy_amount":self.params["buy_amount"], "currency":self.currency_type}
+            self.item["desired_value"] = int(self.last_val+int(self.params["target_profit"])/float(self.params["buy_amount"]))
+            logger.info(self.item)
+            wallet = self.machine.get_wallet_status()
+            if int(wallet["krw"]["avail"]) > int(self.last_val*float(self.params["buy_amount"])):
+                self.order_buy_transaction(machine=self.machine,
+                                           db_handler=self.db_handler,
+                                           currency_type=self.currency_type,
+                                           item=self.item)
+                #self.pusher.send_message("#push", "buy_ordered"+str(self.item))
+                logger.info("buy transaction")
+                self.check_buy_ordered()
+            else:
+                logger.info("krw is short")
+
     def check_buy_ordered(self):
         buy_orders = self.db_handler.find_items({"currency":self.currency_type,"status":"BUY_ORDERED"}, "trader", "trade_status")
 
@@ -147,7 +198,7 @@ class StepTrade(Strategy):
             self.db_handler.insert_item(item, "trader", "trade_history")
             self.db_handler.delete_items({"_id":item["_id"]}, "trader", "trade_status")
 
-    def check_keep_ordered(self):
+    def check_keep_ordered(self): #손절할지 보관 처리할지 고민해야 함
         keeped_orders = self.db_handler.find_items({"currency":self.currency_type, "status":"KEEP_ORDERED"}, "trader", "trade_status")
         for item in keeped_orders:
             if int(item["desired_value"])*0.9 < self.last_val:
