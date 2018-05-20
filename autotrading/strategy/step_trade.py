@@ -52,6 +52,47 @@ class StepTrade(Strategy):
         self.last_val=int(last["last"])
         self.last_24h_volume = float(last["volume"])
 
+    def check_buy_ordered(self):
+        buy_orders = self.db_handler.find_items({"currency":self.currency_type,"status":"BUY_ORDERED"}, "trader", "trade_status")
+
+        for item in buy_orders:
+            logger.info(item)
+            order_result = self.machine.get_my_order_status(self.currency_type, order_id=item["buy_order_id"])
+            logger.info(order_result)
+            if len(order_result)>0 and order_result[0]["status"]=="filled" and order_result[0]["price"] == str(item["buy"]):
+                order_result_dict = order_result[0]
+                real_buy_amount = float(order_result_dict["filled_amount"])-float(order_result_dict["fee"])
+                real_buy_value = float(order_result_dict["avg_price"])
+                buy_completed_time = int(order_result_dict["last_filled_at"]/1000)
+                fee = float(order_result_dict["fee"])
+                if order_result_dict["side"] == "bid":
+                    self.update_trade_status(db_handler=self.db_handler,
+                                             item_id={"_id":item["_id"]},
+                                             value={"status":"BUY_COMPLETED",
+                                              "real_buy_amount":real_buy_amount,
+                                              "buy_completed_time":buy_completed_time,
+                                              "real_buy_value":real_buy_value,
+                                              "buy_fee":fee,
+                                              "error":"success"})
+                    self.pusher.send_message("#push", "buy_completed:"+str(item))
+            elif len(order_result)>0 and order_result[0]["status"] =="unfilled" and order_result[0]["price"] == str(item["buy"]):
+                if int(item["buy"])+int(self.params["step_value"]) <= self.last_val:
+                    logger.info("CancelOrder")
+                    logger.info(item)
+                    try:
+                        self.order_cancel_transaction(machine=self.machine, db_handler=self.db_handler, currency_type=self.currency_type, item=item)
+                    except:
+                        error = traceback.format_exc()
+                        logger.info(error)
+                        self.update_trade_status(db_handler=self.db_handler,
+                                                    item_id={"_id":item["_id"]},
+                                                    value={"error": "failed"})
+                        self.pusher.send_message("#push", "err cancle:"+str(item))
+            elif len(order_result) == 0:
+                self.update_trade_status(db_handler=self.db_handler,
+                                            item_id={"_id":item["_id"]},
+                                            value={"status":"CANCEL_ORDERED"})
+
     def check_my_order(self):
         self.check_buy_ordered()
         self.check_buy_completed()
