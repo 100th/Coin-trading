@@ -14,10 +14,10 @@ class StepTrade(Strategy):
     def __init__(self, machine=None, db_handler=None, strategy=None, currency_type=None, pusher=None):
         if machine is None or db_handler is None or currency_type is None or strategy is None:
             raise Exception("Need to machine, db, currecy type, strategy")
-        if isinstance(machine, KorbitMachine):
+        if isinstance(machine, KorbitMachine): #코빗 거래소 : 여기에 추가해야함
             logger.info("Korbit machine")
             self.currency_type = currency_type + "_krw"
-        elif isinstance(machine, CoinOneMachine):
+        elif isinstance(machine, CoinOneMachine): #코인원 거래소 p198
             logger.info("CoinOne machine")
         self.machine = machine
         self.pusher = pusher
@@ -52,6 +52,19 @@ class StepTrade(Strategy):
         self.last_val=int(last["last"])
         self.last_24h_volume = float(last["volume"])
 
+    def check_my_order(self):
+        self.check_buy_ordered()
+        self.check_buy_completed()
+        self.check_sell_ordered()
+        self.check_sell_completed()
+        self.check_keep_ordered()
+
+    def run(self):
+        if self.params["is_active"]=="active":
+            self.check_my_order()
+            self.scenario()
+        else:
+            logger.info("inactive")
 
 if __name__ == "__main__":
     mongodb = MongoDBHandler(mode="local", db_name="coiner", collection_name="price_info")
